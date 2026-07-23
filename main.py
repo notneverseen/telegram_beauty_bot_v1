@@ -12,9 +12,11 @@ from states import BookingStates
 from keyboards import get_services_keyboard, get_time_keyboard, get_confirm_keyboard
 
 from dotenv import load_dotenv, find_dotenv
+from datetime import datetime
 import logging
 import aiosqlite
 import os
+
 
 load_dotenv(find_dotenv())
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -26,6 +28,7 @@ dp = Dispatcher(storage=storage)
 dp.include_router(router)
 
 logging.basicConfig(level=logging.INFO)
+
 
 async def get_connect_and_add_users_to_db(telegram_id: int, username: str, fullname: str):
     try:
@@ -78,6 +81,7 @@ async def start_booking_order(callback: CallbackQuery, state: FSMContext):
     await state.set_state(BookingStates.choosing_service)
     await callback.answer()
 
+
 @router.callback_query(BookingStates.choosing_service, F.data.startswith('service_'))
 async def process_service(callback: CallbackQuery, state: FSMContext):
     service = callback.data.split('_')[1]
@@ -86,10 +90,26 @@ async def process_service(callback: CallbackQuery, state: FSMContext):
         'Выберите дату:',
         reply_markup=await SimpleCalendar(locale=await get_user_locale(callback.from_user)).start_calendar()
     )
-    await state.set_state(BookingStates.choosing_date)
+    await state.set_state(BookingStates.choosing_service)
     await callback.answer()
 
-@router.callback_query(BookingStates.choosing_date, F.data.startswith('time_'))
+
+@router.callback_query(BookingStates.choosing_date, SimpleCalendarCallback.filter())
+async def process_date(callback: CallbackQuery, callback_data: SimpleCalendarCallback, state: FSMContext):
+    selected, date=await SimpleCalendar(locale=await get_user_locale(callback.from_user)).process_selection(callback, callback_data)
+    if selected:
+        date_str = date.strftime('%Y-%m-%d') # format iso for db
+        date_display = date.strftime('%d.%m.%Y') # format for display to users
+        await state.update_data(date=date_str)
+        await callback.message.edit_text(
+            f'Выбрана дата: {date_display}\nТеперь выберите время:',
+            reply_markup=await get_time_keyboard()
+        )
+        await state.set_state(BookingStates.choosing_time)
+    await callback.answer()
+
+
+@router.callback_query(BookingStates.choosing_time, F.data.startswith('time_'))
 async def process_time(callback: CallbackQuery, state: FSMContext):
     time = callback.data.split('_')[1]
     if len(time) == 3: time_formatted = f'{time[0]}:{time[1:]}' # 900 - 9:00
@@ -97,14 +117,16 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     await state.update_data(service=time_formatted)
     data = await state.get_data()
     await callback.message.edit_text(
-        f'Проверьте данные:\n',
-        f'Услуга: {data['service']}\n',
-        f'Дата: {time_formatted}\n\n',
+        f'Проверьте данные:\n'
+        f'Услуга: {data['service']}\n'
+        f'Дата: {data['date']}\n'
+        f'Время: {time_formatted}\n\n'
         'Все верно?',
         reply_markup=await get_confirm_keyboard()
     )
     await state.set_state(BookingStates.confirming)
     await callback.answer()
+
 
 @dp.callback_query(F.data == 'admin')
 async def admin_callback(callback: CallbackQuery):

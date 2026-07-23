@@ -20,7 +20,7 @@ async def get_time_keyboard():
         callback_data = f'time_{slot.replace(':', '')}'
         builder.button(text=slot, callback_data=callback_data)
     builder.button(text='Назад', callback_data='back_to_dates')
-    builder.adjust(3)
+    builder.adjust(4, 4, 1)
     return builder.as_markup()
 
 
