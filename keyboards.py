@@ -1,8 +1,5 @@
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram_calendar import SimpleCalendar, get_user_locale
-
-from datetime import date
 
 
 async def get_services_keyboard():
@@ -25,6 +22,7 @@ async def get_time_keyboard():
     builder.button(text='Назад', callback_data='back_to_dates')
     builder.adjust(3)
     return builder.as_markup()
+
 
 async def get_confirm_keyboard():
     builder = InlineKeyboardBuilder()

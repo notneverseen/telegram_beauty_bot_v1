@@ -9,7 +9,7 @@ from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback, get_user_lo
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from states import BookingStates
-from keyboards import get_services_keyboard
+from keyboards import get_services_keyboard, get_time_keyboard, get_confirm_keyboard
 
 from dotenv import load_dotenv, find_dotenv
 import logging
@@ -87,6 +87,23 @@ async def process_service(callback: CallbackQuery, state: FSMContext):
         reply_markup=await SimpleCalendar(locale=await get_user_locale(callback.from_user)).start_calendar()
     )
     await state.set_state(BookingStates.choosing_date)
+    await callback.answer()
+
+@router.callback_query(BookingStates.choosing_date, F.data.startswith('time_'))
+async def process_time(callback: CallbackQuery, state: FSMContext):
+    time = callback.data.split('_')[1]
+    if len(time) == 3: time_formatted = f'{time[0]}:{time[1:]}' # 900 - 9:00
+    elif len(time) == 4: time_formatted = f'{time[:2]}:{time[2:]}' # 1000 - 10:00
+    await state.update_data(service=time_formatted)
+    data = await state.get_data()
+    await callback.message.edit_text(
+        f'Проверьте данные:\n',
+        f'Услуга: {data['service']}\n',
+        f'Дата: {time_formatted}\n\n',
+        'Все верно?',
+        reply_markup=await get_confirm_keyboard()
+    )
+    await state.set_state(BookingStates.confirming)
     await callback.answer()
 
 @dp.callback_query(F.data == 'admin')
