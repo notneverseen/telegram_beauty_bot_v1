@@ -33,7 +33,7 @@ async def get_connect_and_add_users_to_db(telegram_id: int, username: str, fulln
             await db.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     telegram_id INTEGER PRIMARY KEY,
-                    username TEXT
+                    username TEXT,
                     fullname TEXT
                 )
             ''')
