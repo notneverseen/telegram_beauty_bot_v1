@@ -20,6 +20,9 @@ import os
 
 load_dotenv(find_dotenv())
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+admin = os.getenv("ADMIN")
+admin_id = os.getenv("ADMIN_ID")
+master = os.getenv("MASTER")
 
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
@@ -90,7 +93,7 @@ async def process_service(callback: CallbackQuery, state: FSMContext):
         'Выберите дату:',
         reply_markup=await SimpleCalendar(locale=await get_user_locale(callback.from_user)).start_calendar()
     )
-    await state.set_state(BookingStates.choosing_service)
+    await state.set_state(BookingStates.choosing_date)
     await callback.answer()
 
 
@@ -98,8 +101,21 @@ async def process_service(callback: CallbackQuery, state: FSMContext):
 async def process_date(callback: CallbackQuery, callback_data: SimpleCalendarCallback, state: FSMContext):
     selected, date=await SimpleCalendar(locale=await get_user_locale(callback.from_user)).process_selection(callback, callback_data)
     if selected:
-        date_str = date.strftime('%Y-%m-%d') # format iso for db
-        date_display = date.strftime('%d.%m.%Y') # format for display to users
+        today = datetime.now()
+        if date < today:
+            await callback.message.edit_text(
+                'Вы выбрали прошедшую дату. Пожалуйста, выберите дату в будущем:' ,
+                reply_markup=await SimpleCalendar(locale=await get_user_locale(callback.from_user)).start_calendar()
+            )
+            await callback.answer()
+            return
+        
+        date_str = date.strftime('%d-%m-%Y') # format iso for db
+        date_display = date_formating(date_str) # format for display to users
+
+        '''if not (datetime.strptime(date_str, '%d-%m-%Y') <= datetime.strptime(datetime.now(), '%d-%m-%Y')):
+            return'''
+        
         await state.update_data(date=date_str)
         await callback.message.edit_text(
             f'Выбрана дата: {date_display}\nТеперь выберите время:',
@@ -112,18 +128,42 @@ async def process_date(callback: CallbackQuery, callback_data: SimpleCalendarCal
 @router.callback_query(BookingStates.choosing_time, F.data.startswith('time_'))
 async def process_time(callback: CallbackQuery, state: FSMContext):
     time = callback.data.split('_')[1]
-    if len(time) == 3: time_formatted = f'{time[0]}:{time[1:]}' # 900 - 9:00
-    elif len(time) == 4: time_formatted = f'{time[:2]}:{time[2:]}' # 1000 - 10:00
-    await state.update_data(service=time_formatted)
-    data = await state.get_data()
+    if len(time) == 3: 
+        time_formatted_display = f'{time[0]}:{time[1:]}' # 900 - 9:00
+    elif len(time) == 4: 
+        time_formatted_display = f'{time[:2]}:{time[2:]}' # 1000 - 10:00
+
+    await state.update_data(time=time_formatted_display)
+    data = await state.get_data() # данные из состояний fsm
+    service_display = data['service'] if data['service'] else 'null'
+    date_display = date_formating(data['date'])
+    # format for display to users
+
+    if service_display == 'manicure':
+        service_display = 'Маникюр'
+    elif service_display == 'pedicure':
+        service_display = 'Педикюр'
+    elif service_display == 'manicure+pedicure':
+        service_display = 'Маникюр + Педикюр'
+    elif service_display == 'another':
+        await callback.message.edit_text(
+            f'Выбраны другие услуги:\n'
+            f'Дата: {date_display}\n'
+            f'Время: {time_formatted_display}\n'
+            f'Свяжитесь с мастером по контакту: {master}, чтобы получить дополнительные услуги.'
+        )
+        await callback.answer()
+        return
+
     await callback.message.edit_text(
         f'Проверьте данные:\n'
-        f'Услуга: {data['service']}\n'
-        f'Дата: {data['date']}\n'
-        f'Время: {time_formatted}\n\n'
+        f'Услуга: {service_display}\n'
+        f'Дата: {date_display}\n'
+        f'Время: {time_formatted_display}\n\n'
         'Все верно?',
         reply_markup=await get_confirm_keyboard()
     )
+
     await state.set_state(BookingStates.confirming)
     await callback.answer()
 
@@ -150,6 +190,10 @@ async def contact_callback(callback: CallbackQuery):
     text = ('contacts')
     await callback.message.answer(text)
     await callback.answer()
+
+
+def date_formating(date_str: str) -> str:
+    return f'{date_str.replace('-', '.')}' if date_str else 'null'
 
 
 async def main():

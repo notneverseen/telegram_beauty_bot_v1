@@ -6,7 +6,7 @@ async def get_services_keyboard():
     builder = InlineKeyboardBuilder()
     builder.button(text='Маникюр', callback_data='service_manicure')
     builder.button(text='Педикюр', callback_data='service_pedicure')
-    builder.button(text='Маникюр + Педикюр', callback_data='service_manicure_and_pedicure')
+    builder.button(text='Маникюр + Педикюр', callback_data='service_manicure+pedicure')
     builder.button(text='Другие услуги', callback_data='service_another')
     builder.button(text='Назад', callback_data='back_to_menu')
     builder.adjust(1)
