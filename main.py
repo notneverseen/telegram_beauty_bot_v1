@@ -168,6 +168,11 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+@router.callback_query(BookingStates.confirming, F.data.startswith('confirm_'))
+async def process_confirm(callback: CallbackQuery, state: FSMContext):
+    pass
+
+
 @dp.callback_query(F.data == 'admin')
 async def admin_callback(callback: CallbackQuery):
     admin_ids = [8628523762]
