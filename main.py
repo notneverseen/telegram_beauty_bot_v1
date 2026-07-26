@@ -170,7 +170,11 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(BookingStates.confirming, F.data.startswith('confirm_'))
 async def process_confirm(callback: CallbackQuery, state: FSMContext):
-    pass
+    await callback.message.edit_text(
+        f'Отлично! Мастер ({master}) получил уведомление и в скором времени свяжется с вами.'
+    )
+    await callback.answer()
+    return
 
 
 @dp.callback_query(F.data == 'admin')
