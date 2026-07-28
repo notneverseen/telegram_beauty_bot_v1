@@ -101,8 +101,8 @@ async def process_service(callback: CallbackQuery, state: FSMContext):
 async def process_date(callback: CallbackQuery, callback_data: SimpleCalendarCallback, state: FSMContext):
     selected, date=await SimpleCalendar(locale=await get_user_locale(callback.from_user)).process_selection(callback, callback_data)
     if selected:
-        today = datetime.now()
-        if date < today:
+        today = datetime.now().date()
+        if date.date() < today:
             await callback.message.edit_text(
                 'Вы выбрали прошедшую дату. Пожалуйста, выберите дату в будущем:' ,
                 reply_markup=await SimpleCalendar(locale=await get_user_locale(callback.from_user)).start_calendar()
@@ -110,7 +110,7 @@ async def process_date(callback: CallbackQuery, callback_data: SimpleCalendarCal
             await callback.answer()
             return
         
-        date_str = date.strftime('%d-%m-%Y') # format iso for db
+        date_str = date.strftime('%Y-%m-%d') # format iso for db
         date_display = date_formating(date_str) # format for display to users
 
         '''if not (datetime.strptime(date_str, '%d-%m-%Y') <= datetime.strptime(datetime.now(), '%d-%m-%Y')):
@@ -170,11 +170,23 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(BookingStates.confirming, F.data.startswith('confirm_'))
 async def process_confirm(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text(
-        f'Отлично! Мастер ({master}) получил уведомление и в скором времени свяжется с вами.'
-    )
-    await callback.answer()
-    return
+    data = callback.data.split('_')[1]
+    if data == 'yes':
+        await callback.message.edit_text(
+            f'Отлично! Мастер ({master}) получил уведомление и в скором времени свяжется с вами.'
+        )
+        await state.clear()
+        await callback.answer()
+        return
+    elif data == 'no':
+        await callback.message.edit_text(
+            f'Выберите повторно: ',
+            reply_markup=await get_main_keyboard()
+        )
+        await state.clear()
+        await callback.answer()
+        return
+
 
 
 @dp.callback_query(F.data == 'admin')
