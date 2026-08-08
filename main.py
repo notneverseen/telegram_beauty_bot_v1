@@ -101,8 +101,8 @@ async def process_service(callback: CallbackQuery, state: FSMContext):
 async def process_date(callback: CallbackQuery, callback_data: SimpleCalendarCallback, state: FSMContext):
     selected, date=await SimpleCalendar(locale=await get_user_locale(callback.from_user)).process_selection(callback, callback_data)
     if selected:
-        today = datetime.now().date()
-        if date.date() < today:
+        date_today = datetime.now().date()
+        if date.date() < date_today:
             await callback.message.edit_text(
                 'Вы выбрали прошедшую дату. Пожалуйста, выберите дату в будущем:' ,
                 reply_markup=await SimpleCalendar(locale=await get_user_locale(callback.from_user)).start_calendar()
@@ -133,8 +133,35 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     elif len(time) == 4: 
         time_formatted_display = f'{time[:2]}:{time[2:]}' # 1000 - 10:00
 
+    data = await state.get_data()
+    date_str = data.get('date')
+
+    '''if not date_str:
+        await callback.message.edit_text(
+            f'Вы выбрали прошедшее время. Пожалуйста, выберите время в будущем:',
+            reply_markup=await get_time_keyboard()
+        )
+        await callback.answer()
+        return'''
+
+    if not is_time_and_date_valid(date_str, time_formatted_display):
+        await callback.answer(
+            'Вы выбрали прошедшее время. Пожалуйста, выберите время в будущем:',
+            show_alert=True
+        )
+        return
+
+    '''time_today = datetime.now().time().isoformat(timespec='minutes')
+
+    if time_formatted_display < time_today:
+        await callback.message.edit_text(
+            f'Вы выбрали прошедшее время. Пожалуйста, выберите время в будущем:',
+            reply_markup=await get_time_keyboard()
+        )
+        await callback.answer()
+        return'''
+
     await state.update_data(time=time_formatted_display)
-    data = await state.get_data() # данные из состояний fsm
     service_display = data['service'] if data['service'] else 'null'
     date_display = date_formating(data['date'])
     # format for display to users
@@ -188,6 +215,25 @@ async def process_confirm(callback: CallbackQuery, state: FSMContext):
         return
 
 
+@router.callback_query(F.data == 'back_to_menu')
+async def process_back_to_menu(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text(
+        f'Вы вернулись в главное меню:',
+        reply_markup=get_main_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == 'back_to_dates')
+async def process_back_to_dates(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(BookingStates.choosing_date)
+    await callback.message.edit_text(
+        f'Выберите дату:',
+        reply_markup =await SimpleCalendar(locale=await get_user_locale(callback.from_user)).start_calendar()
+    )
+    await callback.answer()
+
 
 @dp.callback_query(F.data == 'admin')
 async def admin_callback(callback: CallbackQuery):
@@ -214,7 +260,18 @@ async def contact_callback(callback: CallbackQuery):
 
 
 def date_formating(date_str: str) -> str:
-    return f'{date_str.replace('-', '.')}' if date_str else 'null'
+    if date_str:
+        date_display = f'{date_str.replace('-', '.')}'.split('.')
+        date_display = f'{date_display[2]}.{date_display[1]}.{date_display[0]}'
+        return date_display
+    return 'null'
+
+def is_time_and_date_valid(date_str: str, time_formatted_display: str):
+    try:
+        dt = datetime.strptime(f'{date_str} {time_formatted_display}', '%Y-%m-%d %H:%M')
+        return dt > datetime.now()
+    except ValueError:
+        return False
 
 
 async def main():
