@@ -54,9 +54,10 @@ async def get_connect_and_add_users_to_db(telegram_id: int, username: str, fulln
 async def get_main_keyboard():
     builder = InlineKeyboardBuilder()
     builder.button(text='Записаться на приём', callback_data='order')
-    builder.button(text='Наши услуги', callback_data='services')
     builder.button(text='Контакты', callback_data='contacts')
-    builder.button(text='Админ панель', callback_data='admin')
+
+    # builder.button(text='Админ панель', callback_data='admin')
+    # builder.button(text='Наши услуги', callback_data='services')
 
     builder.adjust(1)
     return builder.as_markup()
@@ -67,12 +68,22 @@ async def start_command(message: Message):
     await message.answer(
         f'Здравствуйте {message.from_user.full_name}!\n'
         'Это бот для записи на маникюр.',
-        reply_markup=await get_main_keyboard())
+        reply_markup = await get_main_keyboard())
     
     telegram_id = message.from_user.id
     username = message.from_user.username
     fullname = message.from_user.full_name
     await get_connect_and_add_users_to_db(telegram_id, username, fullname)
+
+
+def get_service_display(service_code: str) -> str:
+    mapping = {
+        'manicure': 'Маникюр',
+        'pedicure': 'Педикюр',
+        'manicure+pedicure': 'Маникюр + Педикюр',
+        'another': 'Другие условия'
+    }
+    return mapping.get(service_code, service_code)
 
 
 @router.callback_query(F.data == 'order')
@@ -164,7 +175,6 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     await state.update_data(time=time_formatted_display)
     service_display = data['service'] if data['service'] else 'null'
     date_display = date_formating(data['date'])
-    # format for display to users
 
     if service_display == 'manicure':
         service_display = 'Маникюр'
@@ -188,7 +198,7 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
         f'Дата: {date_display}\n'
         f'Время: {time_formatted_display}\n\n'
         'Все верно?',
-        reply_markup=await get_confirm_keyboard()
+        reply_markup = await get_confirm_keyboard()
     )
 
     await state.set_state(BookingStates.confirming)
@@ -197,18 +207,40 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(BookingStates.confirming, F.data.startswith('confirm_'))
 async def process_confirm(callback: CallbackQuery, state: FSMContext):
-    data = callback.data.split('_')[1]
-    if data == 'yes':
+    data_choise = callback.data.split('_')[1]
+    if data_choise == 'yes':
+        data = await state.get_data()
+        service_code = data.get('service', 'не указано')
+        date_str = data.get('date', 'не указано')
+        time_str = data.get('time', 'не указано')
+
+        service_display = get_service_display(service_code)
+        date_display = date_formating(date_str)
+        time_display = time_str
+
+        try:
+            await bot.send_message(
+                chat_id=int(admin_id),
+                text=f'⚡️ Новая запись! ⚡️\n'
+                     f'Клиент: @{callback.from_user.username or 'Без имени'} ({callback.from_user.full_name or 'Без имени'})\n'
+                     f'Услуга: {service_display}\n'
+                     f'Дата: {date_display}\n'
+                     f'Время: {time_display}'
+            )
+        except Exception as e:
+            logging.error(f'Не удалось отправить уведомление мастеру! {e}')
+
         await callback.message.edit_text(
             f'Отлично! Мастер ({master}) получил уведомление и в скором времени свяжется с вами.'
         )
         await state.clear()
         await callback.answer()
         return
-    elif data == 'no':
+    
+    elif data_choise == 'no':
         await callback.message.edit_text(
             f'Выберите повторно: ',
-            reply_markup=await get_main_keyboard()
+            reply_markup = await get_main_keyboard()
         )
         await state.clear()
         await callback.answer()
@@ -220,7 +252,7 @@ async def process_back_to_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text(
         f'Вы вернулись в главное меню:',
-        reply_markup=get_main_keyboard()
+        reply_markup = await get_main_keyboard()
     )
     await callback.answer()
 
@@ -230,31 +262,31 @@ async def process_back_to_dates(callback: CallbackQuery, state: FSMContext):
     await state.set_state(BookingStates.choosing_date)
     await callback.message.edit_text(
         f'Выберите дату:',
-        reply_markup =await SimpleCalendar(locale=await get_user_locale(callback.from_user)).start_calendar()
+        reply_markup = await SimpleCalendar(locale=await get_user_locale(callback.from_user)).start_calendar()
     )
     await callback.answer()
 
 
-@dp.callback_query(F.data == 'admin')
+'''@dp.callback_query(F.data == 'admin')
 async def admin_callback(callback: CallbackQuery):
     admin_ids = [8628523762]
     if callback.from_user.id in admin_ids:
         await callback.message.answer('admin is valid!')
     else:
         await callback.message.answer('admin is invalid!')
-    await callback.answer()
+    await callback.answer()'''
 
 
-@dp.callback_query(F.data == 'services')
+'''@dp.callback_query(F.data == 'services')
 async def services_callback(callback: CallbackQuery):
     text = ('services')
     await callback.message.answer(text)
-    await callback.answer()
+    await callback.answer()'''
 
 
 @dp.callback_query(F.data == 'contacts')
 async def contact_callback(callback: CallbackQuery):
-    text = ('contacts')
+    text = f'Контакты мастера: @{master}\n Бот создан: @{admin}'
     await callback.message.answer(text)
     await callback.answer()
 
@@ -266,12 +298,75 @@ def date_formating(date_str: str) -> str:
         return date_display
     return 'null'
 
+
 def is_time_and_date_valid(date_str: str, time_formatted_display: str):
     try:
         dt = datetime.strptime(f'{date_str} {time_formatted_display}', '%Y-%m-%d %H:%M')
         return dt > datetime.now()
     except ValueError:
         return False
+
+'''@dp.message()
+async def send_to_admin(message: Message):
+    # игнорируем сообщения от админки (нас)
+    if message.from_user.id == admin_id:
+        return
+    
+    # игнорируем команды
+    if message.text and message.text.startswith('/'):
+        return
+    
+    # что будет видеть админ
+    user_info = (
+        f"username: @{message.from_user.username or 'unknown'}\n"
+        f"id: {message.from_user.id}\n"
+    )
+
+    # обработка сообщений (все типы: текст, фото, гифка, документ, гс, видео)
+    if message.text:
+        await bot.send_message(
+            chat_id=admin_id,
+            text=f'{user_info}\n{message.text}'
+        )
+    elif message.photo:
+        await bot.send_photo(
+            chat_id=admin_id,
+            # -1 тк берем самое лучшее по качеству фото/оригинал
+            photo=message.photo[-1].file_id, 
+            caption=f"{user_info}{message.caption or ''}"
+        )
+    elif message.video:
+        await bot.send_video(
+            chat_id=admin_id,
+            video=message.video.file_id,
+            caption=f"{user_info}{message.caption or ''}"
+        )
+    elif message.document:
+        await bot.send_document(
+            chat_id=admin_id,
+            document=message.document.file_id,
+            caption=f"{user_info}{message.caption or ''}"
+        )
+    elif message.voice:
+        await bot.send_voice(
+            chat_id=admin_id,
+            voice=message.voice.file_id,
+            caption=f"{user_info}{message.caption or ''}"
+        )
+    else:
+        await bot.send_message(
+            chat_id=admin_id,
+            caption=f"{user_info} another type message"
+        )
+    
+    # пересылка сообщение (копию) админу
+    await bot.send_message(
+        chat_id=ADMIN_ID,
+        text=caption
+    )
+
+    # подтверждение пользователю, что его сообщение отправлено админу
+    await message.answer('Ваше сообщение отправлено админу')'''
 
 
 async def main():
